@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Web3 Marketplace</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f0f0f0; }
+    .panel { display: none; margin-top: 20px; background: white; padding: 20px; border-radius: 10px; }
+    .active { display: block; }
+    button { margin: 5px; padding: 10px 20px; font-size: 16px; }
+    .tab { cursor: pointer; color: blue; text-decoration: underline; }
+    .wallet { font-weight: bold; }
+    .nft { border: 1px solid #ccc; padding: 10px; margin: 10px; background: #fff; }
+    .auction { background: #f0f0f0; }
+    .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; }
+    .modal-content { background: white; padding: 20px; border-radius: 10px; max-width: 600px; }
+    .close { float: right; cursor: pointer; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>Web3 Marketplace</h1>
+  <button onclick="connectWallet()">Connect Wallet</button>
+  <p id="walletStatus"></p>
+
+  <!-- Tabs -->
+  <div>
+    <span class="tab" onclick="showPanel('admin')">Admin Panel</span> |
+    <span class="tab" onclick="showPanel('seller')">Seller Panel</span> |
+    <span class="tab" onclick="showPanel('customer')">Customer Panel</span>
+  </div>
+
+  <!-- Admin Panel -->
+  <div id="admin" class="panel">
+    <h2>Admin Panel</h2>
+    <button onclick="mintNFT()">Mint NFT</button>
+    <input type="text" id="nftName" placeholder="NFT Name" />
+    <input type="text" id="nftImage" placeholder="IPFS CID (e.g., ipfs://Qm...)" />
+    <h3>Manage Listings</h3>
+    <div id="adminListings"></div>
+  </div>
+
+  <!-- Seller Panel -->
+  <div id="seller" class="panel">
+    <h2>Seller Panel</h2>
+    <p>Connected as: <span id="sellerAddress" class="wallet"></span></p>
+    <h3>Your Listings</h3>
+    <div id="sellerListings"></div>
+    <h3>Create Auction</h3>
+    <input type="number" id="tokenId" placeholder="Token ID" />
+    <input type="number" id="startingBid" placeholder="Starting Bid (ETH)" />
+    <button onclick="createAuction()">Create Auction</button>
+  </div>
+
+  <!-- Customer Panel -->
+  <div id="customer" class="panel">
+    <h2>Customer Panel</h2>
+    <h3>Items for Sale</h3>
+    <div id="itemList"></div>
+    <h3>Auctions</h3>
+    <div id="auctionList"></div>
+  </div>
+
+  <!-- Modals -->
+  <div id="modal" class="modal" style="display:none;">
+    <div class="modal-content">
+      <span class="close" onclick="closeModal()">×</span>
+      <h2 id="modalTitle"></h2>
+      <p id="modalContent"></p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+  <script>
+    // Simulated blockchain data (stored in localStorage)
+    let nfts = JSON.parse(localStorage.getItem("marketplaceNFTs")) || [];
+    let auctions = JSON.parse(localStorage.getItem("marketplaceAuctions")) || [];
+    let adminAddress = "0xAdminWalletAddress"; // Replace with your admin wallet
+
+    // Wallet connection (simulated)
+    let connectedAddress = "";
+
+    function connectWallet() {
+      // Simulate wallet connection (replace with real MetaMask integration later)
+      connectedAddress = "0x" + Math.random().toString(16).substr(2, 40).toUpperCase();
+      document.getElementById("walletStatus").innerText = `Connected: ${connectedAddress}`;
+      document.getElementById("sellerAddress").innerText = connectedAddress;
+      checkAdminStatus(connectedAddress);
+      loadNFTs();
+      loadAuctions();
+    }
+
+    function checkAdminStatus(address) {
+      const adminPanel = document.getElementById("admin");
+      if (address.toLowerCase() === adminAddress.toLowerCase()) {
+        adminPanel.style.display = "block";
+        loadAdminListings();
+      }
+    }
+
+    // Admin Functions
+    function mintNFT() {
+      const name = document.getElementById("nftName").value;
+      const image = document.getElementById("nftImage").value;
+      if (!name || !image) {
+        alert("Fill in all fields!");
+        return;
+      }
+      const newNFT = {
+        id: Date.now(),
+        name,
+        image,
+        owner: connectedAddress,
+        price: 0,
+        isForSale: false,
+      };
+      nfts.push(newNFT);
+      localStorage.setItem("marketplaceNFTs", JSON.stringify(nfts));
+      loadNFTs();
+      loadAdminListings();
+    }
+
+    function loadAdminListings() {
+      const container = document.getElementById("adminListings");
+      container.innerHTML = "";
+      nfts.forEach((nft) => {
+        const div = document.createElement("div");
+        div.innerHTML = `
+          <strong>${nft.name}</strong> - ${nft.image}
+          <button onclick="setPrice(${nft.id})">Set Price</button>
+          <input type="number" id="price-${nft.id}" placeholder="Price (ETH)" />
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function setPrice(id) {
+      const price = document.getElementById(`price-${id}`).value;
+      if (!price) return;
+      const nft = nfts.find((n) => n.id === id);
+      nft.price = parseFloat(price);
+      nft.isForSale = true;
+      localStorage.setItem("marketplaceNFTs", JSON.stringify(nfts));
+      loadNFTs();
+      loadAdminListings();
+    }
+
+    // Seller Functions
+    function loadSellerListings() {
+      const container = document.getElementById("sellerListings");
+      container.innerHTML = "";
+      nfts.filter((nft) => nft.owner === connectedAddress).forEach((nft) => {
+        const div = document.createElement("div");
+        div.innerHTML = `
+          <strong>${nft.name}</strong> - ${nft.image}
+          <p>Price: ${nft.price} ETH</p>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function createAuction() {
+      const tokenId = document.getElementById("tokenId").value;
+      const startingBid = document.getElementById("startingBid").value;
+      if (!tokenId || !startingBid) {
+        alert("Fill in all fields!");
+        return;
+      }
+      const nft = nfts.find((n) => n.id === parseInt(tokenId));
+      if (!nft || nft.owner !== connectedAddress) {
+        alert("Invalid NFT!");
+        return;
+      }
+      const auction = {
+        id: Date.now(),
+        nftId: parseInt(tokenId),
+        startingBid: parseFloat(startingBid),
+        highestBid: parseFloat(startingBid),
+        bidder: connectedAddress,
+        endTime: Date.now() + 86400000, // 24 hours
+      };
+      auctions.push(auction);
+      localStorage.setItem("marketplaceAuctions", JSON.stringify(auctions));
+      loadAuctions();
+    }
+
+    // Customer Functions
+    function loadNFTs() {
+      const container = document.getElementById("itemList");
+      container.innerHTML = "";
+      nfts.filter((nft) => nft.isForSale).forEach((nft) => {
+        const div = document.createElement("div");
+        div.className = "nft";
+        div.innerHTML = `
+          <strong>${nft.name}</strong>
+          <img src="${nft.image}" alt="${nft.name}" style="max-width: 200px;" />
+          <p>Price: ${nft.price} ETH</p>
+          <button onclick="buyNFT(${nft.id})">Buy</button>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function buyNFT(id) {
+      const nft = nfts.find((n) => n.id === id);
+      if (!nft.isForSale) return;
+      alert(`Bought ${nft.name} for ${nft.price} ETH!`);
+      nft.owner = connectedAddress;
+      localStorage.setItem("marketplaceNFTs", JSON.stringify(nfts));
+      loadNFTs();
+      loadSellerListings();
+    }
+
+    function loadAuctions() {
+      const container = document.getElementById("auctionList");
+      container.innerHTML = "";
+      auctions.forEach((auction) => {
+        const nft = nfts.find((n) => n.id === auction.nftId);
+        const timeLeft = Math.max(0, auction.endTime - Date.now());
+        const timeLeftStr = new Date(timeLeft).toISOString().substr(11, 8);
+        const div = document.createElement("div");
+        div.className = "nft auction";
+        div.innerHTML = `
+          <strong>${nft.name}</strong>
+          <img src="${nft.image}" alt="${nft.name}" style="max-width: 200px;" />
+          <p>Starting Bid: ${auction.startingBid} ETH</p>
+          <p>Highest Bid: ${auction.highestBid} ETH</p>
+          <p>Time Left: ${timeLeftStr}</p>
+          <button onclick="bid(${auction.id})">Bid</button>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function bid(auctionId) {
+      const auction = auctions.find((a) => a.id === auctionId);
+      const newBid = parseFloat(prompt("Enter your bid (ETH):", auction.highestBid + 0.1));
+      if (isNaN(newBid) || newBid <= auction.highestBid) {
+        alert("Invalid bid!");
+        return;
+      }
+      auction.highestBid = newBid;
+      auction.bidder = connectedAddress;
+      localStorage.setItem("marketplaceAuctions", JSON.stringify(auctions));
+      loadAuctions();
+    }
+
+    // UI Functions
+    function showPanel(panelId) {
+      document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
+      document.getElementById(panelId).classList.add("active");
+    }
+
+    function showModal(title, content) {
+      document.getElementById("modalTitle").innerText = title;
+      document.getElementById("modalContent").innerText = content;
+      document.getElementById("modal").style.display = "flex";
+    }
+
+    function closeModal() {
+      document.getElementById("modal").style.display = "none";
+    }
+  </script>
+</body>
+</html>
